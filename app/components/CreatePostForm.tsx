@@ -3,14 +3,18 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import RichTextEditor from "./RichTextEditor";
+import AudienceSelector, { GroupOption, Visibility } from "./AudienceSelector";
 
 interface CreatePostFormProps {
   forumId: string;
+  groups: GroupOption[];
 }
 
-export default function CreatePostForm({ forumId }: CreatePostFormProps) {
+export default function CreatePostForm({ forumId, groups }: CreatePostFormProps) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [visibility, setVisibility] = useState<Visibility>("PUBLIC");
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
 
@@ -28,11 +32,14 @@ export default function CreatePostForm({ forumId }: CreatePostFormProps) {
           title,
           content,
           forumId,
+          visibility,
+          groupIds: visibility === "GROUPS" ? groupIds : [],
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create post");
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Failed to create post");
       }
 
       const post = await response.json();
@@ -40,7 +47,9 @@ export default function CreatePostForm({ forumId }: CreatePostFormProps) {
       router.refresh();
     } catch (error) {
       console.error("Error creating post:", error);
-      alert("Failed to create post. Please try again.");
+      alert(
+        error instanceof Error ? error.message : "Failed to create post."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -77,6 +86,14 @@ export default function CreatePostForm({ forumId }: CreatePostFormProps) {
         />
       </div>
 
+      <AudienceSelector
+        groups={groups}
+        visibility={visibility}
+        selectedGroupIds={groupIds}
+        onVisibilityChange={setVisibility}
+        onSelectedGroupIdsChange={setGroupIds}
+      />
+
       <div className="flex justify-end space-x-4">
         <button
           type="button"
@@ -87,7 +104,9 @@ export default function CreatePostForm({ forumId }: CreatePostFormProps) {
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={
+            isSubmitting || (visibility === "GROUPS" && groupIds.length === 0)
+          }
           className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
         >
           {isSubmitting ? "Creating..." : "Create Post"}

@@ -51,10 +51,9 @@ npm run dev
 docker-compose up --build
 ```
 
-2. Run database migrations:
-```bash
-docker-compose exec app npx prisma migrate deploy
-```
+2. The database schema is applied automatically when the app container
+   starts (`prisma db push`). A schema change that would lose data is
+   refused and the container exits instead of dropping data.
 
 3. The application will be available at `http://localhost:3000`
 

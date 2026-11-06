@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
+import { visiblePostsWhere } from "@/lib/visibility";
 import { SearchForm } from "../components/SearchForm";
 import Link from "next/link";
 import Image from "next/image";
@@ -24,7 +25,7 @@ interface Post {
   title: string;
   content: string;
   createdAt: Date;
-  user: {
+  author: {
     id: string;
     name: string | null;
     image: string | null;
@@ -65,6 +66,7 @@ export default async function SearchPage({
     posts = await prisma.post.findMany({
       where: {
         AND: [
+          visiblePostsWhere(session.user.id),
           query
             ? {
                 OR: [
@@ -92,7 +94,9 @@ export default async function SearchPage({
         ],
       },
       include: {
-        user: true,
+        author: true,
+        category: { select: { id: true, name: true } },
+        tags: { select: { id: true, name: true } },
         forum: {
           select: {
             id: true,
@@ -159,10 +163,10 @@ export default async function SearchPage({
                   <div className="p-6">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center space-x-3">
-                        {post.user.image ? (
+                        {post.author.image ? (
                           <Image
-                            src={post.user.image}
-                            alt={post.user.name || "User avatar"}
+                            src={post.author.image}
+                            alt={post.author.name || "User avatar"}
                             width={40}
                             height={40}
                             className="rounded-full"
@@ -170,13 +174,13 @@ export default async function SearchPage({
                         ) : (
                           <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
                             <span className="text-sm text-gray-500">
-                              {post.user.name?.[0]?.toUpperCase() || "?"}
+                              {post.author.name?.[0]?.toUpperCase() || "?"}
                             </span>
                           </div>
                         )}
                         <div>
                           <p className="text-sm font-medium text-gray-900">
-                            {post.user.name || "Anonymous"}
+                            {post.author.name || "Anonymous"}
                           </p>
                           <p className="text-sm text-gray-500">
                             {new Date(post.createdAt).toLocaleDateString()}

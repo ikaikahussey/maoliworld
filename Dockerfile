@@ -1,6 +1,8 @@
 # Build stage
 FROM node:20-alpine AS builder
 
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Copy package files
@@ -8,7 +10,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install dependencies
-RUN npm install
+RUN npm ci
 
 # Copy source code
 COPY . .
@@ -22,26 +24,27 @@ RUN npm run build
 # Production stage
 FROM node:20-alpine AS runner
 
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
-# Set environment variables
 ENV NODE_ENV=production
 
-# Copy necessary files from builder
-COPY --from=builder /app/next.config.js ./
-COPY --from=builder /app/public ./public
+# Standalone server output plus static assets
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 
-# Install production dependencies only
-RUN npm install --production
+# Prisma client, engines and CLI (the CLI applies schema changes at startup)
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
-# Generate Prisma client in production
-RUN npx prisma generate
-
-# Expose the port the app runs on
 EXPOSE 3000
+ENV PORT=3000 HOSTNAME=0.0.0.0
 
-# Start the application
-CMD ["node", "server.js"] 
+# Sync the database schema, then start the server. `db push` refuses changes
+# that would lose data, so a destructive schema change stops the container
+# instead of dropping data.
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --skip-generate && node server.js"]

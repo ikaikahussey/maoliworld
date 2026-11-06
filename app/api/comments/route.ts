@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
+import { canViewPost } from "@/lib/visibility";
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -15,6 +16,10 @@ export async function POST(request: Request) {
 
     if (!content || !postId) {
       return new NextResponse("Missing required fields", { status: 400 });
+    }
+
+    if (!(await canViewPost(postId, session.user.id))) {
+      return new NextResponse("Post not found", { status: 404 });
     }
 
     // If parentId is provided, verify that the parent comment exists and belongs to the same post
@@ -71,6 +76,10 @@ export async function GET(request: Request) {
 
     if (!postId) {
       return new NextResponse("Post ID is required", { status: 400 });
+    }
+
+    if (!(await canViewPost(postId, session.user.id))) {
+      return new NextResponse("Post not found", { status: 404 });
     }
 
     const comments = await prisma.comment.findMany({

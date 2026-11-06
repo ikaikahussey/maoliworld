@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
 import CreatePostForm from "@/app/components/CreatePostForm";
+import { getUserGroups } from "@/lib/visibility";
 
 export default async function NewPostPage({
   params,
@@ -23,12 +24,14 @@ export default async function NewPostPage({
     redirect("/forums");
   }
 
+  const groups = await getUserGroups(session.user.id);
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold mb-8">Create New Post in {forum.name}</h1>
         <div className="bg-white rounded-lg shadow-md p-6">
-          <CreatePostForm forumId={forum.id} />
+          <CreatePostForm forumId={forum.id} groups={groups} />
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
+import { visiblePostsWhere } from "@/lib/visibility";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 
@@ -36,14 +37,16 @@ export default async function ForumsPage() {
     redirect("/login");
   }
 
+  const visible = visiblePostsWhere(session.user.id);
   const forums = await prisma.forum.findMany({
     include: {
       _count: {
         select: {
-          posts: true,
+          posts: { where: visible },
         },
       },
       posts: {
+        where: visible,
         take: 1,
         orderBy: {
           createdAt: "desc",

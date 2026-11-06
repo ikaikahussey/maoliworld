@@ -2,7 +2,9 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" for local development; musl/OpenSSL 3 for the node:20-alpine image.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -11,19 +13,21 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  password      String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  photos        Photo[]
-  posts         Post[]
-  comments      Comment[]
-  accounts      Account[]
-  sessions      Session[]
+  id               String        @id @default(cuid())
+  name             String?
+  email            String        @unique
+  emailVerified    DateTime?
+  image            String?
+  password         String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  photos           Photo[]
+  posts            Post[]
+  comments         Comment[]
+  accounts         Account[]
+  sessions         Session[]
+  groupMemberships GroupMember[]
+  groupsCreated    Group[]       @relation("GroupCreator")
 }
 
 model Account {
@@ -65,11 +69,11 @@ model Photo {
 }
 
 model Forum {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   name        String
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   posts       Post[]
   categories  Category[]
 }
@@ -88,34 +92,70 @@ model Category {
 }
 
 model Post {
-  id            String    @id @default(cuid())
+  id            String         @id @default(cuid())
   title         String
   content       String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  author        User      @relation(fields: [authorId], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  author        User           @relation(fields: [authorId], references: [id])
   authorId      String
-  forum         Forum     @relation(fields: [forumId], references: [id])
+  forum         Forum          @relation(fields: [forumId], references: [id])
   forumId       String
-  category      Category? @relation(fields: [categoryId], references: [id])
+  category      Category?      @relation(fields: [categoryId], references: [id])
   categoryId    String?
-  tags          Tag[]
+  tags          Tag[]          @relation("PostToTag")
   comments      Comment[]
-  activityPubId String?   @unique
-  likeCount     Int       @default(0)
-  reblogCount   Int       @default(0)
+  activityPubId String?        @unique
+  likeCount     Int            @default(0)
+  reblogCount   Int            @default(0)
+  // PUBLIC: visible to every user. GROUPS: visible only to the author and
+  // members of at least one of the groups in `groups`.
+  visibility    PostVisibility @default(PUBLIC)
+  groups        Group[]        @relation("PostToGroup")
+
+  @@index([visibility])
+}
+
+enum PostVisibility {
+  PUBLIC
+  GROUPS
+}
+
+model Group {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  creatorId   String?
+  creator     User?         @relation("GroupCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+  members     GroupMember[]
+  posts       Post[]        @relation("PostToGroup")
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  userId    String
+  groupId   String
+  role      String   @default("member")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+  @@index([groupId])
 }
 
 model Comment {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
   postId    String
-  parent    Comment? @relation("CommentToComment", fields: [parentId], references: [id], onDelete: Cascade)
+  parent    Comment?  @relation("CommentToComment", fields: [parentId], references: [id], onDelete: Cascade)
   parentId  String?
   replies   Comment[] @relation("CommentToComment")
 
@@ -142,4 +182,4 @@ model Follower {
   domain      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-} 
+}
