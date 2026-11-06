@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
+import { visiblePostsWhere } from "@/lib/visibility";
 
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
     const posts = await prisma.post.findMany({
       where: {
         AND: [
+          visiblePostsWhere(session.user.id),
           forumId ? { forumId } : {},
           categoryId ? { categoryId } : {},
           tag ? {
@@ -42,7 +44,7 @@ export async function GET(request: Request) {
         ],
       },
       include: {
-        user: {
+        author: {
           select: {
             id: true,
             name: true,

@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { resolveAudience } from "@/lib/visibility";
+
+const postInclude = {
+  author: { select: { id: true, name: true, image: true } },
+  groups: { select: { id: true, name: true } },
+} as const;
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +16,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { title, content, forumId } = await request.json();
+    const { title, content, forumId, visibility, groupIds } =
+      await request.json();
 
     if (!title || !content || !forumId) {
       return NextResponse.json(
@@ -27,22 +34,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    const audience = await resolveAudience(user.id, { visibility, groupIds });
+    if (!audience.ok) {
+      return NextResponse.json({ error: audience.error }, { status: 400 });
+    }
+
     const post = await prisma.post.create({
       data: {
         title,
         content,
         forumId,
-        userId: user.id,
+        authorId: user.id,
+        visibility: audience.visibility,
+        groups: { connect: audience.groupIds.map((id) => ({ id })) },
       },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
-          },
-        },
-      },
+      include: postInclude,
     });
 
     return NextResponse.json(post);
@@ -62,7 +68,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id, title, content } = await request.json();
+    const { id, title, content, visibility, groupIds } = await request.json();
 
     if (!id || !title || !content) {
       return NextResponse.json(
@@ -81,18 +87,34 @@ export async function PUT(request: Request) {
 
     const post = await prisma.post.findUnique({
       where: { id },
-      include: { user: true },
+      select: { authorId: true },
     });
 
     if (!post) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
-    if (post.userId !== user.id) {
+    if (post.authorId !== user.id) {
       return NextResponse.json(
         { error: "You can only edit your own posts" },
         { status: 403 }
       );
+    }
+
+    // Audience is only changed when the client sends it.
+    let audienceData = {};
+    if (visibility !== undefined) {
+      const audience = await resolveAudience(user.id, {
+        visibility,
+        groupIds,
+      });
+      if (!audience.ok) {
+        return NextResponse.json({ error: audience.error }, { status: 400 });
+      }
+      audienceData = {
+        visibility: audience.visibility,
+        groups: { set: audience.groupIds.map((gid) => ({ id: gid })) },
+      };
     }
 
     const updatedPost = await prisma.post.update({
@@ -100,16 +122,9 @@ export async function PUT(request: Request) {
       data: {
         title,
         content,
+        ...audienceData,
       },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
-          },
-        },
-      },
+      include: postInclude,
     });
 
     return NextResponse.json(updatedPost);
@@ -149,14 +164,14 @@ export async function DELETE(request: Request) {
 
     const post = await prisma.post.findUnique({
       where: { id },
-      include: { user: true },
+      select: { authorId: true },
     });
 
     if (!post) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
-    if (post.userId !== user.id) {
+    if (post.authorId !== user.id) {
       return NextResponse.json(
         { error: "You can only delete your own posts" },
         { status: 403 }

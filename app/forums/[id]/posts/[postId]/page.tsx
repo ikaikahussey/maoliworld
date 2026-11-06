@@ -6,6 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import { notFound } from "next/navigation";
 import { CommentSection } from "../../../../components/CommentSection";
 import { FediverseInteractions } from "../../../../components/FediverseInteractions";
+import { visiblePostsWhere } from "@/lib/visibility";
 
 interface Comment {
   id: string;
@@ -52,20 +53,25 @@ interface PostPageProps {
 
 export default async function PostPage({ params }: PostPageProps) {
   const session = await getServerSession(authOptions);
-  const post = await prisma.post.findUnique({
-    where: { id: params.postId },
+  // findFirst with the visibility filter: posts the viewer is not allowed
+  // to see are reported as not found rather than forbidden.
+  const post = await prisma.post.findFirst({
+    where: {
+      AND: [{ id: params.postId }, visiblePostsWhere(session?.user?.id)],
+    },
     include: {
       author: true,
       forum: true,
       category: true,
       tags: true,
+      groups: { select: { id: true, name: true }, orderBy: { name: "asc" } },
       comments: {
         where: { parentId: null },
         include: {
-          author: true,
+          user: true,
           replies: {
             include: {
-              author: true,
+              user: true,
             },
             orderBy: {
               createdAt: "asc",
@@ -87,6 +93,16 @@ export default async function PostPage({ params }: PostPageProps) {
   if (!post) {
     notFound();
   }
+
+  const comments = post.comments.map(({ user, replies, ...c }) => ({
+    ...c,
+    author: user,
+    replies: replies.map(({ user: replyUser, ...r }) => ({
+      ...r,
+      author: replyUser,
+      replies: [],
+    })),
+  }));
 
   return (
     <div className="space-y-6">
@@ -111,6 +127,16 @@ export default async function PostPage({ params }: PostPageProps) {
       </div>
 
       <div className="flex flex-wrap gap-2">
+        {post.visibility === "GROUPS" ? (
+          <span
+            className="tag bg-amber-100 text-amber-800"
+            title="Only members of these groups can see this post"
+          >
+            Groups: {post.groups.map((g) => g.name).join(", ")}
+          </span>
+        ) : (
+          <span className="tag bg-green-100 text-green-800">All users</span>
+        )}
         {post.category && (
           <span className="tag bg-blue-100 text-blue-800">
             {post.category.name}
@@ -162,7 +188,7 @@ export default async function PostPage({ params }: PostPageProps) {
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Comments</h2>
         <CommentSection
           postId={post.id}
-          comments={post.comments}
+          comments={comments}
           user={session?.user || null}
         />
       </div>

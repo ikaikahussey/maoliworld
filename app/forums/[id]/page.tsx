@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
+import { visiblePostsWhere } from "@/lib/visibility";
 import Link from "next/link";
 import Image from "next/image";
 import { formatDistanceToNow } from "date-fns";
@@ -26,6 +27,11 @@ interface Post {
     name: string;
   };
   tags: {
+    id: string;
+    name: string;
+  }[];
+  visibility: "PUBLIC" | "GROUPS";
+  groups: {
     id: string;
     name: string;
   }[];
@@ -63,8 +69,10 @@ export default async function ForumPage({ params }: ForumPageProps) {
         orderBy: { name: "asc" },
       },
       posts: {
+        where: visiblePostsWhere(session.user.id),
         include: {
           author: true,
+          groups: { select: { id: true, name: true } },
           category: true,
           tags: true,
           _count: {
@@ -91,7 +99,7 @@ export default async function ForumPage({ params }: ForumPageProps) {
           <h1 className="text-3xl font-bold text-gray-900">{forum.name}</h1>
           <p className="text-gray-600 mt-1">{forum.description}</p>
         </div>
-        <Link href={`/forums/${forum.id}/posts/new`} className="btn-primary">
+        <Link href={`/forums/${forum.id}/new-post`} className="btn-primary">
           Create Post
         </Link>
       </div>
@@ -125,6 +133,14 @@ export default async function ForumPage({ params }: ForumPageProps) {
                   {post.title}
                 </Link>
                 <div className="mt-2 flex flex-wrap gap-2">
+                  {post.visibility === "GROUPS" && (
+                    <span
+                      className="tag bg-amber-100 text-amber-800"
+                      title="Only members of these groups can see this post"
+                    >
+                      Groups: {post.groups.map((g) => g.name).join(", ")}
+                    </span>
+                  )}
                   {post.category && (
                     <span className="tag bg-blue-100 text-blue-800">
                       {post.category.name}

@@ -3,22 +3,37 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import RichTextEditor from "./RichTextEditor";
+import AudienceSelector, { GroupOption, Visibility } from "./AudienceSelector";
 
 interface Post {
   id: string;
   title: string;
   content: string;
   forumId: string;
+  visibility: Visibility;
+  groups: GroupOption[];
 }
 
 interface EditPostFormProps {
   post: Post;
+  groups: GroupOption[];
 }
 
-export default function EditPostForm({ post }: EditPostFormProps) {
+export default function EditPostForm({ post, groups }: EditPostFormProps) {
   const [title, setTitle] = useState(post.title);
   const [content, setContent] = useState(post.content);
+  const [visibility, setVisibility] = useState<Visibility>(post.visibility);
+  const [groupIds, setGroupIds] = useState<string[]>(
+    post.groups.map((g) => g.id)
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Groups the post is already shared with stay selectable even if the
+  // author has since left them, so editing does not silently drop them.
+  const groupOptions = [
+    ...groups,
+    ...post.groups.filter((pg) => !groups.some((g) => g.id === pg.id)),
+  ];
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,18 +50,23 @@ export default function EditPostForm({ post }: EditPostFormProps) {
           id: post.id,
           title,
           content,
+          visibility,
+          groupIds: visibility === "GROUPS" ? groupIds : [],
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update post");
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Failed to update post");
       }
 
       router.push(`/forums/${post.forumId}/posts/${post.id}`);
       router.refresh();
     } catch (error) {
       console.error("Error updating post:", error);
-      alert("Failed to update post. Please try again.");
+      alert(
+        error instanceof Error ? error.message : "Failed to update post."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -83,6 +103,14 @@ export default function EditPostForm({ post }: EditPostFormProps) {
         />
       </div>
 
+      <AudienceSelector
+        groups={groupOptions}
+        visibility={visibility}
+        selectedGroupIds={groupIds}
+        onVisibilityChange={setVisibility}
+        onSelectedGroupIdsChange={setGroupIds}
+      />
+
       <div className="flex justify-end space-x-4">
         <button
           type="button"
@@ -93,7 +121,9 @@ export default function EditPostForm({ post }: EditPostFormProps) {
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={
+            isSubmitting || (visibility === "GROUPS" && groupIds.length === 0)
+          }
           className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
         >
           {isSubmitting ? "Saving..." : "Save Changes"}
